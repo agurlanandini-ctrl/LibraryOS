@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>LibraryOS — Management System</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:        #0d0d0d;
+    --surface:   #141414;
+    --card:      #1a1a1a;
+    --border:    #2a2a2a;
+    --gold:      #c9a84c;
+    --gold-dim:  #8a6f2e;
+    --cyan:      #00e5c8;
+    --red:       #ff4d6d;
+    --green:     #00c896;
+    --text:      #e8e4dc;
+    --muted:     #6b6760;
+    --radius:    12px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── TOAST SYSTEM ─── */
+  #toast-container {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+  }
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-radius: 10px;
+    min-width: 300px;
+    max-width: 380px;
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--card);
+    border-left: 4px solid var(--gold);
+    box-shadow: 0 8px 32px rgba(0,0,0,.6);
+    pointer-events: all;
+    animation: slideIn .35s cubic-bezier(.16,1,.3,1) forwards;
+    backdrop-filter: blur(12px);
+  }
+  .toast.success { border-color: var(--green); }
+  .toast.error   { border-color: var(--red); }
+  .toast.info    { border-color: var(--cyan); }
+  .toast.warn    { border-color: var(--gold); }
+  .toast.fade-out { animation: slideOut .3s ease forwards; }
+  .toast-icon { font-size: 18px; flex-shrink: 0; }
+  .toast-msg  { flex: 1; line-height: 1.4; }
+  .toast-close {
+    cursor: pointer; opacity: .5; font-size: 16px;
+    transition: opacity .2s; background: none; border: none;
+    color: var(--text); padding: 2px;
+  }
+  .toast-close:hover { opacity: 1; }
+  @keyframes slideIn  { from { opacity:0; transform:translateX(60px); } to { opacity:1; transform:translateX(0); } }
+  @keyframes slideOut { from { opacity:1; transform:translateX(0); } to { opacity:0; transform:translateX(60px); } }
+
+  /* ─── MODAL CONFIRM ─── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.75);
+    backdrop-filter: blur(6px);
+    z-index: 8000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    animation: popIn .3s cubic-bezier(.16,1,.3,1);
+  }
+  @keyframes popIn { from { opacity:0; transform:scale(.88); } to { opacity:1; transform:scale(1); } }
+  .modal-icon { font-size: 40px; margin-bottom: 16px; }
+  .modal-title { font-family:'Playfair Display',serif; font-size:22px; margin-bottom:8px; color:var(--gold); }
+  .modal-msg { color:var(--muted); font-size:14px; margin-bottom:24px; line-height:1.6; }
+  .modal-actions { display:flex; gap:12px; justify-content:center; }
+  .btn-cancel {
+    padding:10px 24px; border-radius:8px; border:1px solid var(--border);
+    background:transparent; color:var(--text); cursor:pointer; font-size:14px;
+    transition: all .2s;
+  }
+  .btn-cancel:hover { border-color:var(--muted); background:var(--surface); }
+  .btn-confirm {
+    padding:10px 24px; border-radius:8px; border:none;
+    background:var(--red); color:#fff; cursor:pointer; font-size:14px; font-weight:600;
+    transition: all .2s;
+  }
+  .btn-confirm:hover { background:#e03055; transform:translateY(-1px); }
+
+  /* ─── PAGE SYSTEM ─── */
+  .page { display:none; min-height:100vh; }
+  .page.active { display:block; }
+
+  /* ─── LOGIN PAGE ─── */
+  #login-page {
+    display: none;
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at 20% 50%, #1a1200 0%, var(--bg) 60%),
+                radial-gradient(ellipse at 80% 20%, #001a15 0%, transparent 50%);
+    position: relative;
+    overflow: hidden;
+  }
+  #login-page.active { display: flex; }
+  .login-grid-bg {
+    position: absolute; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px),
+                      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: .3;
+  }
+  .login-card {
+    position: relative; z-index: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 48px 40px;
+    width: 420px;
+    box-shadow: 0 32px 80px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .login-logo {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .login-logo .books-icon { font-size: 40px; display:block; margin-bottom:12px; }
+  .login-logo h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    color: var(--gold);
+    letter-spacing: -.5px;
+  }
+  .login-logo p { color: var(--muted); font-size: 13px; margin-top:4px; }
+  .form-group { margin-bottom: 20px; }
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .form-group input {
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    transition: border-color .2s, box-shadow .2s;
+    outline: none;
+  }
+  .form-group input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(201,168,76,.12);
+  }
+  .login-hint {
+    background: rgba(201,168,76,.08);
+    border: 1px solid rgba(201,168,76,.2);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--gold-dim);
+    margin-bottom: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.8;
+  }
+  .btn-login {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, var(--gold), #e8b84b);
+    color: #0d0d0d;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all .25s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .btn-login:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(201,168,76,.35); }
+  .btn-login:active { transform: translateY(0); }
+
+  /* ─── MAIN APP ─── */
+  #app-page { display: none; min-height: 100vh; }
+  #app-page.active { display: block; }
+
+  /* ─── HEADER ─── */
+  .app-header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(13,13,13,.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-brand {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .header-brand .brand-icon { font-size: 24px; }
+  .header-brand h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    color: var(--gold);
+    letter-spacing: -.3px;
+  }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .user-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 40px;
+    padding: 6px 14px 6px 8px;
+    font-size: 13px;
+  }
+  .user-avatar {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--gold), var(--cyan));
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #0d0d0d;
+  }
+  .btn-logout {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid var(--red);
+    border-radius: 8px;
+    color: var(--red);
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .btn-logout:hover { background: rgba(255,77,109,.1); transform: translateY(-1px); }
+
+  /* ─── MAIN CONTENT ─── */
+  .app-main {
+    padding: 32px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .app-title {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  .app-title h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 48px;
+    color: var(--gold);
+    letter-spacing: -1px;
+  }
+  .app-title p { color: var(--muted); font-size: 14px; margin-top: 6px; }
+
+  .content-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.6fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* ─── PANEL CARDS ─── */
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+  }
+  .panel-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 24px;
+  }
+  .panel-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+  .panel-dot.gold   { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+  .panel-dot.cyan   { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+  .panel-title {
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    font-weight: 700; color: var(--muted);
+  }
+
+  /* ─── FORM STYLES ─── */
+  .field-label {
+    display: block; font-size: 11px; letter-spacing: 1.2px;
+    text-transform: uppercase; color: var(--muted); font-weight: 600;
+    margin-bottom: 7px;
+  }
+  .field-input {
+    width: 100%;
+    padding: 11px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    margin-bottom: 16px;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .field-input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(201,168,76,.1);
+  }
+  .field-input::placeholder { color: var(--muted); }
+  select.field-input { cursor: pointer; }
+  .btn-add {
+    width: 100%; padding: 13px;
+    background: linear-gradient(135deg, var(--gold), #e8b84b);
+    color: #0d0d0d; border: none; border-radius: 8px;
+    font-size: 13px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; cursor: pointer;
+    transition: all .25s; font-family: 'DM Sans', sans-serif;
+    margin-top: 4px;
+  }
+  .btn-add:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(201,168,76,.3); }
+
+  /* ─── STATS ─── */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 12px; margin-bottom: 20px;
+  }
+  .stat-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-num {
+    font-family: 'Playfair Display', serif;
+    font-size: 32px; font-weight: 900;
+    display: block;
+  }
+  .stat-num.gold  { color: var(--gold); }
+  .stat-num.green { color: var(--green); }
+  .stat-num.red   { color: var(--red); }
+  .stat-label {
+    font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--muted); font-weight: 600;
+  }
+
+  /* ─── SEARCH / FILTER ─── */
+  .search-row {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 10px; margin-bottom: 16px;
+  }
+  .search-wrap {
+    position: relative;
+  }
+  .search-wrap .search-icon {
+    position: absolute; left: 12px; top: 50%;
+    transform: translateY(-50%); color: var(--muted); font-size: 15px;
+  }
+  .search-input {
+    width: 100%; padding: 10px 14px 10px 36px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 13px;
+    font-family: 'DM Sans', sans-serif; outline: none;
+    transition: border-color .2s;
+  }
+  .search-input:focus { border-color: var(--gold); }
+  .genre-filter {
+    padding: 10px 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 13px;
+    font-family: 'DM Sans', sans-serif; outline: none;
+    cursor: pointer; min-width: 120px;
+  }
+
+  /* ─── BOOK CARDS ─── */
+  .book-list { display: flex; flex-direction: column; gap: 10px; }
+  .book-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: border-color .2s, transform .2s;
+    animation: fadeUp .3s ease both;
+  }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  .book-card:hover { border-color: var(--gold-dim); transform: translateX(3px); }
+  .book-card.borrowed { opacity: .7; }
+  .book-info { flex: 1; min-width: 0; }
+  .book-title-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .book-name {
+    font-size: 15px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .status-badge {
+    flex-shrink: 0;
+    font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    font-weight: 700; padding: 3px 8px; border-radius: 4px;
+  }
+  .status-badge.available {
+    background: rgba(0,200,150,.12); color: var(--green);
+    border: 1px solid rgba(0,200,150,.2);
+  }
+  .status-badge.borrowed {
+    background: rgba(255,77,109,.12); color: var(--red);
+    border: 1px solid rgba(255,77,109,.2);
+  }
+  .book-meta {
+    font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 2px;
+  }
+  .book-meta .dot { opacity: .4; }
+  .book-id {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--gold-dim); margin-top: 4px;
+  }
+  .book-actions { display: flex; gap: 8px; flex-shrink: 0; margin-left: 16px; }
+  .btn-borrow {
+    display: flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border-radius: 6px; border: none;
+    background: rgba(0,229,200,.12); color: var(--cyan);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: all .2s; font-family: 'DM Sans', sans-serif;
+  }
+  .btn-borrow:hover { background: rgba(0,229,200,.22); transform: translateY(-1px); }
+  .btn-borrow:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+  .btn-return {
+    display: flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border-radius: 6px; border: none;
+    background: rgba(201,168,76,.12); color: var(--gold);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: all .2s; font-family: 'DM Sans', sans-serif;
+  }
+  .btn-return:hover { background: rgba(201,168,76,.22); transform: translateY(-1px); }
+  .btn-delete {
+    display: flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border-radius: 6px; border: none;
+    background: rgba(255,77,109,.1); color: var(--red);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: all .2s; font-family: 'DM Sans', sans-serif;
+  }
+  .btn-delete:hover { background: rgba(255,77,109,.2); transform: translateY(-1px); }
+
+  .empty-state {
+    text-align: center; padding: 48px 24px;
+    color: var(--muted); font-size: 14px;
+  }
+  .empty-state .empty-icon { font-size: 40px; display:block; margin-bottom:12px; }
+
+  /* ─── LOGOUT CONFIRM ─── */
+  #logout-confirm .btn-confirm { background: var(--gold); color: #0d0d0d; }
+  #logout-confirm .btn-confirm:hover { background: #e8b84b; }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 860px) {
+    .content-grid { grid-template-columns: 1fr; }
+    .app-main { padding: 16px; }
+    .app-title h1 { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ───────────── TOAST CONTAINER ───────────── -->
+<div id="toast-container"></div>
+
+<!-- ───────────── DELETE CONFIRM MODAL ───────────── -->
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal-box">
+    <div class="modal-icon">🗑️</div>
+    <div class="modal-title">Delete Book?</div>
+    <div class="modal-msg" id="delete-modal-msg">Are you sure you want to remove this book from the library? This action cannot be undone.</div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('delete-modal')">Cancel</button>
+      <button class="btn-confirm" id="delete-confirm-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────── LOGOUT CONFIRM MODAL ───────────── -->
+<div class="modal-overlay" id="logout-confirm">
+  <div class="modal-box">
+    <div class="modal-icon">👋</div>
+    <div class="modal-title">Logging Out?</div>
+    <div class="modal-msg">Your session will end and you'll need to login again to access the library.</div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('logout-confirm')">Stay</button>
+      <button class="btn-confirm" id="logout-confirm-btn">Log Out</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+         LOGIN PAGE
+═══════════════════════════════════════════ -->
+<div id="login-page" class="page active">
+  <div class="login-grid-bg"></div>
+  <div class="login-card">
+    <div class="login-logo">
+      <span class="books-icon">📚</span>
+      <h1>LibraryOS</h1>
+      <p>Management System · v2.0</p>
+    </div>
+
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="login-user" placeholder="Enter your username" autocomplete="off"/>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="login-pass" placeholder="Enter your password" />
+    </div>
+
+    <div class="login-hint">
+      Demo credentials:<br/>
+      👤 Username: <strong>admin</strong><br/>
+      🔑 Password: <strong>library123</strong>
+    </div>
+
+    <button class="btn-login" onclick="handleLogin()">Sign In →</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+         MAIN APP
+═══════════════════════════════════════════ -->
+<div id="app-page" class="page">
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-brand">
+      <span class="brand-icon">📚</span>
+      <h2>LibraryOS</h2>
+    </div>
+    <div class="header-right">
+      <div class="user-badge">
+        <div class="user-avatar" id="user-avatar">A</div>
+        <span id="user-name-display">Admin</span>
+      </div>
+      <button class="btn-logout" onclick="confirmLogout()">
+        <span>⎋</span> Log Out
+      </button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="app-main">
+    <div class="app-title">
+      <h1>Library Management System</h1>
+      <p>Track, manage, and organize your entire collection</p>
+    </div>
+
+    <div class="content-grid">
+      <!-- ADD BOOK PANEL -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-dot gold"></div>
+          <span class="panel-title">Add New Book</span>
+        </div>
+
+        <label class="field-label">Book Title</label>
+        <input class="field-input" id="book-title" placeholder="e.g. The Great Gatsby"/>
+
+        <label class="field-label">Author</label>
+        <input class="field-input" id="book-author" placeholder="e.g. F. Scott Fitzgerald"/>
+
+        <label class="field-label">Genre</label>
+        <select class="field-input" id="book-genre">
+          <option>Fiction</option>
+          <option>Science Fiction</option>
+          <option>Non-Fiction</option>
+          <option>Mystery</option>
+          <option>Thriller</option>
+          <option>Biography</option>
+          <option>History</option>
+          <option>Fantasy</option>
+          <option>Self-Help</option>
+          <option>Romance</option>
+          <option>Horror</option>
+          <option>Philosophy</option>
+          <option>Science</option>
+          <option>Technology</option>
+        </select>
+
+        <label class="field-label">Publication Year</label>
+        <input class="field-input" id="book-year" placeholder="e.g. 2001" type="number" min="1000" max="2099"/>
+
+        <button class="btn-add" onclick="addBook()">+ Add to Library</button>
+      </div>
+
+      <!-- CATALOG PANEL -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-dot cyan"></div>
+          <span class="panel-title">Library Catalog</span>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-box">
+            <span class="stat-num gold" id="stat-total">0</span>
+            <span class="stat-label">Total</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num green" id="stat-available">0</span>
+            <span class="stat-label">Available</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num red" id="stat-borrowed">0</span>
+            <span class="stat-label">Borrowed</span>
+          </div>
+        </div>
+
+        <!-- Search -->
+        <div class="search-row">
+          <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input class="search-input" id="search-input" placeholder="Search title or author..." oninput="renderBooks()"/>
+          </div>
+          <select class="genre-filter" id="genre-filter" onchange="renderBooks()">
+            <option value="">All Genres</option>
+            <option>Fiction</option>
+            <option>Science Fiction</option>
+            <option>Non-Fiction</option>
+            <option>Mystery</option>
+            <option>Thriller</option>
+            <option>Biography</option>
+            <option>History</option>
+            <option>Fantasy</option>
+            <option>Self-Help</option>
+            <option>Romance</option>
+            <option>Horror</option>
+            <option>Philosophy</option>
+            <option>Science</option>
+            <option>Technology</option>
+          </select>
+        </div>
+
+        <!-- Book List -->
+        <div class="book-list" id="book-list"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+
+<script>
+/* ═══════════════════════════════════
+   DATA
+═══════════════════════════════════ */
+let books = [
+  { id:'BK-001', title:'To Kill a Mockingbird', author:'Harper Lee',    genre:'Fiction',         year:1960, borrowed:false },
+  { id:'BK-002', title:'1984',                  author:'George Orwell', genre:'Science Fiction', year:1949, borrowed:false },
+  { id:'BK-003', title:'The Alchemist',          author:'Paulo Coelho',  genre:'Fiction',         year:1988, borrowed:false },
+  { id:'BK-004', title:'Sapiens',                author:'Yuval Harari',  genre:'History',         year:2011, borrowed:false },
+  { id:'BK-005', title:'Atomic Habits',          author:'James Clear',   genre:'Self-Help',       year:2018, borrowed:false },
+  { id:'BK-006', title:'Dune',                   author:'Frank Herbert', genre:'Science Fiction', year:1965, borrowed:false },
+  { id:'BK-007', title:'The Great Gatsby',       author:'F. Scott Fitzgerald', genre:'Fiction',   year:1925, borrowed:false },
+  { id:'BK-008', title:'Thinking, Fast and Slow',author:'Daniel Kahneman', genre:'Non-Fiction',  year:2011, borrowed:false },
+];
+let bookCounter = 8;
+let pendingDeleteId = null;
+let currentUser = null;
+
+/* ═══════════════════════════════════
+   TOAST SYSTEM
+═══════════════════════════════════ */
+function showToast(msg, type='info', duration=3500) {
+  const icons = { success:'✅', error:'❌', info:'ℹ️', warn:'⚠️' };
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `
+    <span class="toast-icon">${icons[type]||'📢'}</span>
+    <span class="toast-msg">${msg}</span>
+    <button class="toast-close" onclick="dismissToast(this.parentElement)">✕</button>
+  `;
+  c.appendChild(t);
+  setTimeout(() => dismissToast(t), duration);
+}
+function dismissToast(el) {
+  if (!el || el.classList.contains('fade-out')) return;
+  el.classList.add('fade-out');
+  setTimeout(() => el.remove(), 320);
+}
+
+/* ═══════════════════════════════════
+   MODAL SYSTEM
+═══════════════════════════════════ */
+function openModal(id)  { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+/* ═══════════════════════════════════
+   AUTH
+═══════════════════════════════════ */
+const USERS = { admin:'library123', librarian:'books2024', staff:'read456' };
+
+function handleLogin() {
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  if (!user || !pass) { showToast('Please enter both username and password.','warn'); return; }
+  if (USERS[user] && USERS[user] === pass) {
+    currentUser = user;
+    document.getElementById('user-name-display').textContent = user.charAt(0).toUpperCase()+user.slice(1);
+    document.getElementById('user-avatar').textContent = user.charAt(0).toUpperCase();
+    document.getElementById('login-page').classList.remove('active');
+    document.getElementById('app-page').classList.add('active');
+    renderBooks();
+    setTimeout(()=> showToast(`Welcome back, ${user.charAt(0).toUpperCase()+user.slice(1)}! 👋`, 'success'), 300);
+  } else {
+    showToast('Invalid username or password. Try again.', 'error');
+    document.getElementById('login-pass').value = '';
+    document.getElementById('login-pass').focus();
+  }
+}
+
+// Allow Enter key on login
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('login-page').classList.contains('active')) handleLogin();
+});
+
+function confirmLogout() { openModal('logout-confirm'); }
+document.getElementById('logout-confirm-btn').onclick = function() {
+  closeModal('logout-confirm');
+  document.getElementById('app-page').classList.remove('active');
+  document.getElementById('login-page').classList.add('active');
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+  currentUser = null;
+  showToast('You have been logged out successfully.', 'info');
+};
+
+/* ═══════════════════════════════════
+   BOOK OPERATIONS
+═══════════════════════════════════ */
+function addBook() {
+  const title  = document.getElementById('book-title').value.trim();
+  const author = document.getElementById('book-author').value.trim();
+  const genre  = document.getElementById('book-genre').value;
+  const year   = document.getElementById('book-year').value.trim();
+
+  if (!title)  { showToast('Please enter a book title.', 'warn'); return; }
+  if (!author) { showToast('Please enter the author name.', 'warn'); return; }
+  if (!year)   { showToast('Please enter the publication year.', 'warn'); return; }
+  const y = parseInt(year);
+  if (isNaN(y)||y<1000||y>new Date().getFullYear()+1) {
+    showToast('Please enter a valid publication year.','warn'); return;
+  }
+
+  bookCounter++;
+  const id = 'BK-' + String(bookCounter).padStart(3,'0');
+  books.push({ id, title, author, genre, year:y, borrowed:false });
+  renderBooks();
+  document.getElementById('book-title').value='';
+  document.getElementById('book-author').value='';
+  document.getElementById('book-year').value='';
+  showToast(`📖 "${title}" has been added to the library!`, 'success');
+}
+
+function borrowBook(id) {
+  const b = books.find(x=>x.id===id);
+  if (!b||b.borrowed) return;
+  b.borrowed = true;
+  renderBooks();
+  showToast(`📤 "${b.title}" borrowed successfully! Please return within 14 days.`, 'info', 4000);
+}
+
+function returnBook(id) {
+  const b = books.find(x=>x.id===id);
+  if (!b||!b.borrowed) return;
+  b.borrowed = false;
+  renderBooks();
+  showToast(`📥 "${b.title}" returned successfully. Thank you!`, 'success');
+}
+
+function askDelete(id) {
+  const b = books.find(x=>x.id===id);
+  if (!b) return;
+  pendingDeleteId = id;
+  document.getElementById('delete-modal-msg').textContent =
+    `Remove "${b.title}" by ${b.author} from the catalog? This cannot be undone.`;
+  openModal('delete-modal');
+}
+
+document.getElementById('delete-confirm-btn').onclick = function() {
+  if (!pendingDeleteId) return;
+  const b = books.find(x=>x.id===pendingDeleteId);
+  books = books.filter(x=>x.id!==pendingDeleteId);
+  pendingDeleteId = null;
+  closeModal('delete-modal');
+  renderBooks();
+  showToast(`🗑️ "${b?.title}" removed from the library.`, 'error');
+};
+
+/* ═══════════════════════════════════
+   RENDER
+═══════════════════════════════════ */
+function updateStats() {
+  const total = books.length;
+  const bor   = books.filter(b=>b.borrowed).length;
+  document.getElementById('stat-total').textContent     = total;
+  document.getElementById('stat-available').textContent = total-bor;
+  document.getElementById('stat-borrowed').textContent  = bor;
+}
+
+function renderBooks() {
+  updateStats();
+  const q  = (document.getElementById('search-input')?.value||'').toLowerCase();
+  const gf = document.getElementById('genre-filter')?.value||'';
+  let list = books.filter(b=>{
+    const matchQ = !q || b.title.toLowerCase().includes(q)||b.author.toLowerCase().includes(q);
+    const matchG = !gf || b.genre===gf;
+    return matchQ && matchG;
+  });
+
+  const el = document.getElementById('book-list');
+  if (!el) return;
+  if (!list.length) {
+    el.innerHTML=`<div class="empty-state"><span class="empty-icon">🔍</span>No books found matching your search.</div>`;
+    return;
+  }
+  el.innerHTML = list.map((b,i)=>`
+    <div class="book-card${b.borrowed?' borrowed':''}" style="animation-delay:${i*40}ms">
+      <div class="book-info">
+        <div class="book-title-row">
+          <span class="book-name">${b.title}</span>
+          <span class="status-badge ${b.borrowed?'borrowed':'available'}">${b.borrowed?'Borrowed':'Available'}</span>
+        </div>
+        <div class="book-meta">
+          <span>${b.author}</span>
+          <span class="dot">·</span>
+          <span>${b.genre}</span>
+          <span class="dot">·</span>
+          <span>${b.year}</span>
+        </div>
+        <div class="book-id">${b.id}</div>
+      </div>
+      <div class="book-actions">
+        ${b.borrowed
+          ? `<button class="btn-return" onclick="returnBook('${b.id}')">↩ Return</button>`
+          : `<button class="btn-borrow" onclick="borrowBook('${b.id}')">↗ Borrow</button>`
+        }
+        <button class="btn-delete" onclick="askDelete('${b.id}')">✕ Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+</script>
+</body>
+</html>
